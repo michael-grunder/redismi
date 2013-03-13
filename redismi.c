@@ -123,13 +123,13 @@ void free_redismi_context(void *object TSRMLS_DC) {
 
     // If we've got a context zval attached to our struct, free it
     if(context->z_info) {
-    	zval_dtor(context->z_info);
-    	efree(context->z_info);
+        zval_dtor(context->z_info);
+        efree(context->z_info);
     }
 
     // If we've got an attached callback, free our handler struct
     if(context->fci) {
-    	efree(context->fci);
+        efree(context->fci);
     }
 
     // Free context structure itself
@@ -155,9 +155,6 @@ void init_redismi(TSRMLS_D) {
     // Register the class with PHP
     redismi_ce = zend_register_internal_class(&ce TSRMLS_CC);
 
-    /* 
-     * RedisMIException -- figure this nonsense out some other time
-     */
     // Initialize the exception class entry
     INIT_CLASS_ENTRY(ce_ex, "RedisMIException", NULL);
     redismi_exception_ce = zend_register_internal_class_ex(
@@ -209,48 +206,48 @@ PHPAPI void redis_cmd(INTERNAL_FUNCTION_PARAMETERS, char *cmd, size_t cmd_len) {
  * Set object's context value
  */
 PHPAPI void set_object_info(INTERNAL_FUNCTION_PARAMETERS, redismi_context *context, zval *z_info) {
-	// Free previous context if it's set
-	if(context->z_info) {
-		zval_dtor(context->z_info);
-		efree(context->z_info);
-		context->z_info = NULL;
-	}
+    // Free previous context if it's set
+    if(context->z_info) {
+        zval_dtor(context->z_info);
+        efree(context->z_info);
+        context->z_info = NULL;
+    }
 
-	// If the info is non null, copy it and set.  Otherwise null it out
-	if(z_info) {
-		MAKE_STD_ZVAL(context->z_info);
-		*context->z_info = *z_info;
-		zval_copy_ctor(context->z_info);
-	}
+    // If the info is non null, copy it and set.  Otherwise null it out
+    if(z_info) {
+        MAKE_STD_ZVAL(context->z_info);
+        *context->z_info = *z_info;
+        zval_copy_ctor(context->z_info);
+    }
 }
 
 /*
  * Call our attached callback
  */
 PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *context,
-							  char *file, int file_len)
+                              char *file, int file_len)
 {
-   	zend_fcall_info        *fci = &context->fci->fci;
-   	zend_fcall_info_cache  *fcc = &context->fci->fcc;
-   	zval                  **params[3], *z_ret=NULL, *z_file, *z_cmds;
+    zend_fcall_info        *fci = &context->fci->fci;
+    zend_fcall_info_cache  *fcc = &context->fci->fcc;
+    zval                  **params[3], *z_ret=NULL, *z_file, *z_cmds;
 
-   	// RedisMI
-   	params[0] = &getThis();
+    // RedisMI
+    params[0] = &getThis();
 
-   	// Save file
-   	MAKE_STD_ZVAL(z_file);
-   	ZVAL_STRINGL(z_file, file, file_len, 1);
-   	params[1] = &z_file;
+    // Save file
+    MAKE_STD_ZVAL(z_file);
+    ZVAL_STRINGL(z_file, file, file_len, 1);
+    params[1] = &z_file;
 
-   	// Number of commands
-   	MAKE_STD_ZVAL(z_cmds);
-   	ZVAL_LONG(z_cmds, context->cmd_count);
-   	params[2] = &z_cmds;
+    // Number of commands
+    MAKE_STD_ZVAL(z_cmds);
+    ZVAL_LONG(z_cmds, context->cmd_count);
+    params[2] = &z_cmds;
 
-   	// Set up call structure
-   	fci->retval_ptr_ptr = &z_ret;
-   	fci->params 		= params;
-   	fci->param_count 	= 3;
+    // Set up call structure
+    fci->retval_ptr_ptr = &z_ret;
+    fci->params         = params;
+    fci->param_count    = 3;
    	fci->no_separation 	= 0;
 
    	// Call our function
@@ -260,11 +257,11 @@ PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *con
    	efree(z_file);
    	efree(z_cmds);
 
-    // Free any return value the userland callback decided to create
+   	// Free any return value the userland callback decided to create
    	if(z_ret) zval_ptr_dtor(&z_ret);
 
-    // Success!
-    return result;
+   	// Success!
+   	return result;
 }
 
 /*
@@ -274,7 +271,7 @@ PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *con
 
 PHP_METHOD(RedisMI, __construct) {
     // Initial buffer size
-	zval *z_context = NULL;
+    zval *z_context = NULL;
 
     // See if we've been given a different initial size
     if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|z", &z_context) == FAILURE) {
@@ -310,34 +307,34 @@ PHP_METHOD(RedisMI, __destruct) {
  * Get user assigned object info
  */
 PHP_METHOD(RedisMI, GetInfo) {
-	// Grab object context
-	redismi_context *context = GET_CONTEXT();
+    // Grab object context
+    redismi_context *context = GET_CONTEXT();
 
-	// If the context is non-null, return it
-	if(context->z_info != NULL) {
-		RETURN_ZVAL(context->z_info, 1, 0);
-	} else {
-		RETURN_NULL();
-	}
+    // If the context is non-null, return it
+    if(context->z_info != NULL) {
+        RETURN_ZVAL(context->z_info, 1, 0);
+    } else {
+        RETURN_NULL();
+    }
 }
 
 /*
  * Set user assigned object info
  */
 PHP_METHOD(RedisMI, SetInfo) {
-	zval *z_info=NULL;
+    zval *z_info=NULL;
 
-	// Make sure we can parse parameters
-	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &z_info) == FAILURE) {
-		RETURN_FALSE;
-	}
+    // Make sure we can parse parameters
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &z_info) == FAILURE) {
+        RETURN_FALSE;
+    }
 
-	redismi_context *context = GET_CONTEXT();
+    redismi_context *context = GET_CONTEXT();
 
-	// Udpate our object info
-	set_object_info(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, z_info);
+    // Udpate our object info
+    set_object_info(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, z_info);
 
-	RETURN_TRUE;
+    RETURN_TRUE;
 }
 
 /*
@@ -347,10 +344,10 @@ PHP_METHOD(RedisMI, SaveCallback) {
     // Allocate memory for our fcall info and cache
     callback_handler *cfi = emalloc(sizeof(*cfi));
 
-	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "f", &cfi->fci, &cfi->fcc) == FAILURE) {
-		efree(cfi);
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "f", &cfi->fci, &cfi->fcc) == FAILURE) {
+        efree(cfi);
         RETURN_FALSE;
-	}
+    }
 
     if(cfi->fci.function_name) {
         Z_ADDREF_P(cfi->fci.function_name);
@@ -359,41 +356,41 @@ PHP_METHOD(RedisMI, SaveCallback) {
         Z_ADDREF_P(cfi->fci.object_ptr);
     }
 
-	// Grab our object context
-	redismi_context *context = GET_CONTEXT();
+    // Grab our object context
+    redismi_context *context = GET_CONTEXT();
 
-	// Set our callback info in our context struct
-	context->fci = cfi;
+    // Set our callback info in our context struct
+    context->fci = cfi;
 }
 
 /*
  * Truncate our command buffer (doesn't free memory)
  */
 PHP_METHOD(RedisMI, truncate) {
-	int b_free = 0;
+    int b_free = 0;
 
-	// Make sure we can parse parameters
-	if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|b", &b_free) == FAILURE) {
-		RETURN_FALSE;
-	}
+    // Make sure we can parse parameters
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|b", &b_free) == FAILURE) {
+        RETURN_FALSE;
+    }
 
-	// Get the classes context object
-	redismi_context *context = GET_CONTEXT();
+    // Get the classes context object
+    redismi_context *context = GET_CONTEXT();
 
-	// If we've been instructed to free memory associated with our command buffer, do that
-	if(b_free) {
-		// Free our buffer
-		cb_free(context->buf);
+    // If we've been instructed to free memory associated with our command buffer, do that
+    if(b_free) {
+        // Free our buffer
+        cb_free(context->buf);
 
-		// Attempt to create a new buffer
-		if(!(context->buf = cb_init(INITIAL_BUFFER_SIZE))) {
-	        // Something is wrong
-			zend_throw_exception(redismi_exception_ce, "Couldn't reallocate command buffer!", 0 TSRMLS_C);
-			RETURN_FALSE;
-		}
-	}
+        // Attempt to create a new buffer
+        if(!(context->buf = cb_init(INITIAL_BUFFER_SIZE))) {
+            // Something is wrong
+            zend_throw_exception(redismi_exception_ce, "Couldn't reallocate command buffer!", 0 TSRMLS_C);
+            RETURN_FALSE;
+        }
+    }
 
-	// Reset buffer position, and command count
+    // Reset buffer position, and command count
     context->buf->pos  = 0;
     context->cmd_count = 0;
 
@@ -438,10 +435,10 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 
     // If we've got a callback, call it
     if(context->fci) {
-    	if(exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, file, file_len) == FAILURE) {
+        if(exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, file, file_len) == FAILURE) {
             zend_throw_exception(redismi_exception_ce, "Couldn't execute callback!", 0 TSRMLS_CC);
             RETURN_FALSE;
-    	}
+        }
     }
 
     // Success!
