@@ -63,7 +63,7 @@ typedef struct _redismi_context {
 /* 
  * Create our own exceptions
  */
-//PHPAPI zend_class_entry *redismi_get_exception_base(int root TSRMLS_DC);
+PHPAPI zend_class_entry *redismi_get_exception_base(int root TSRMLS_DC);
 
 /*
  * Initialize / Free our structure

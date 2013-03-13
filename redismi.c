@@ -2,7 +2,7 @@
 #include "config.h"
 #endif
 
-// Eclipse is balls
+// Eclipse NULL check
 #ifndef NULL
 #define NULL   ((void *) 0)
 #endif
@@ -19,7 +19,7 @@ zend_class_entry *redismi_ce;
  * Our exceptions
  */
 zend_class_entry *redismi_exception_ce;
-//zend_class_entry *spl_ce_RuntimeException = NULL;
+zend_class_entry *spl_rte_ce = NULL;
 
 /*
  * RedisMI function table
@@ -44,26 +44,23 @@ static zend_function_entry redismi_methods[] = {
 #include "pt_impl.h"
 
 /*
- * Our own exceptions  -- CG(class_table) not found!!?!?!?!?!?!?!
+ * Our own exceptions
  */
- /*
 PHPAPI zend_class_entry *redismi_get_exception_base(int root TSRMLS_DC) {
 #if HAVE_SPL
     if(!root) {
-        if(!spl_ce_RuntimeException) {
+        if(!spl_rte_ce) {
             zend_class_entry **pce;
 
-            TSRMSLS_FETCH();
-
-            if(zend_hash_find(GC(class_table), 
+            if(zend_hash_find(CG(class_table),
                               "runtimeexception", sizeof("runtimeexception"),
                               (void**)&pce) == SUCCESS)
             {
-                spl_ce_RuntimeException = *pce;
+                spl_rte_ce = *pce;
                 return *pce;
             }
         } else {
-            return spl_ce_RuntimeException;
+            return spl_rte_ce;
         }
     }
 #endif
@@ -73,7 +70,6 @@ PHPAPI zend_class_entry *redismi_get_exception_base(int root TSRMLS_DC) {
     return zend_exception_get_default(TSRMLS_C);
 #endif
 }
-*/
 
 /*
  * Create context structure
@@ -144,7 +140,7 @@ void free_redismi_context(void *object TSRMLS_DC) {
  * Initialize our class and register it with PHP
  */
 void init_redismi(TSRMLS_D) {
-    zend_class_entry ce;
+    zend_class_entry ce, ce_ex;
     
     /*
      * RedisMI
@@ -159,14 +155,9 @@ void init_redismi(TSRMLS_D) {
     // Register the class with PHP
     redismi_ce = zend_register_internal_class(&ce TSRMLS_CC);
 
-    // Properties
-    //zend_declare_property_string(redismi_ce, "server", strlen("server"), "", ZEND_ACC_PUBLIC TSRMLS_CC);
-    //zend_declare_property_long(redismi_ce, "port", strlen("port"), 0, ZEND_ACC_PUBLIC TSRMLS_CC);
-
     /* 
      * RedisMIException -- figure this nonsense out some other time
      */
-/*
     // Initialize the exception class entry
     INIT_CLASS_ENTRY(ce_ex, "RedisMIException", NULL);
     redismi_exception_ce = zend_register_internal_class_ex(
@@ -174,7 +165,6 @@ void init_redismi(TSRMLS_D) {
         redismi_get_exception_base(0 TSRMLS_CC),
         NULL TSRMLS_CC
     );
-    */
 }
 
 /*
@@ -186,7 +176,7 @@ PHPAPI void redis_cmd(INTERNAL_FUNCTION_PARAMETERS, char *cmd, size_t cmd_len) {
     redismi_context *context = GET_CONTEXT();
 
     if(!context->buf) {
-        zend_throw_exception(NULL, "Invalid command buffer", 0 TSRMLS_CC);
+        zend_throw_exception(redismi_exception_ce, "Invalid command buffer", 0 TSRMLS_CC);
         RETURN_FALSE;
     }
 
@@ -304,7 +294,7 @@ PHP_METHOD(RedisMI, __construct) {
     
     // Something is very wrong if we can't do that
     if(!context->buf) {
-        zend_throw_exception(NULL, "Failed to create context buffer.  Possible OOM error", 0 TSRMLS_CC);
+        zend_throw_exception(redismi_exception_ce, "Failed to create context buffer.  Possible OOM error", 0 TSRMLS_CC);
     }
     
     // Success
@@ -398,7 +388,7 @@ PHP_METHOD(RedisMI, truncate) {
 		// Attempt to create a new buffer
 		if(!(context->buf = cb_init(INITIAL_BUFFER_SIZE))) {
 	        // Something is wrong
-			zend_throw_exception(NULL, "Couldn't reallocate command buffer!", 0 TSRMLS_C);
+			zend_throw_exception(redismi_exception_ce, "Couldn't reallocate command buffer!", 0 TSRMLS_C);
 			RETURN_FALSE;
 		}
 	}
@@ -426,7 +416,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 
     // Attempt to open the file
     if(!(fp = fopen(file, "w"))) {
-        zend_throw_exception(NULL, "Couldn't open file", 0 TSRMLS_C);
+        zend_throw_exception(redismi_exception_ce, "Couldn't open file", 0 TSRMLS_C);
         RETURN_FALSE;
     }
 
@@ -435,7 +425,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 
     // Write our file
     if(fwrite(context->buf->buf, 1, context->buf->pos, fp) < CMD_BUFLEN(context)) {
-        zend_throw_exception(NULL, "Couldn't write buffer", 0 TSRMLS_CC);
+        zend_throw_exception(redismi_exception_ce, "Couldn't write buffer", 0 TSRMLS_CC);
         fclose(fp);
         RETURN_FALSE;
     }
@@ -449,7 +439,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
     // If we've got a callback, call it
     if(context->fci) {
     	if(exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, file, file_len) == FAILURE) {
-            zend_throw_exception(NULL, "Couldn't execute callback!", 0 TSRMLS_CC);
+            zend_throw_exception(redismi_exception_ce, "Couldn't execute callback!", 0 TSRMLS_CC);
             RETURN_FALSE;
     	}
     }
