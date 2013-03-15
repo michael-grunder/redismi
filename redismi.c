@@ -473,49 +473,6 @@ PHP_METHOD(RedisMI, SaveBuffer) {
     }
 
     RETURN_LONG(written);
-
-    /*char *file;
-    int file_len, flush = 1;
-    FILE *fp;
-
-    // Make sure we were passed a filename
-    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|b", &file, &file_len) == FAILURE) {
-        RETURN_FALSE;
-    }
-
-    // Attempt to open the file
-    if(!(fp = fopen(file, "w"))) {
-        zend_throw_exception(redismi_exception_ce, "Couldn't open file", 0 TSRMLS_C);
-        RETURN_FALSE;
-    }
-
-    // Grab our context
-    redismi_context *context = GET_CONTEXT();
-
-    // Write our file
-    if(fwrite(context->buf->buf, 1, context->buf->pos, fp) < context->buf->pos) {
-        zend_throw_exception(redismi_exception_ce, "Couldn't write buffer", 0 TSRMLS_CC);
-        fclose(fp);
-        RETURN_FALSE;
-    }
-
-    // Reset the buffer if we should
-    if(flush) context->buf->pos = 0;
-
-    // Close our file
-    fclose(fp);
-
-    // If we've got a callback, call it
-    if(context->fci && exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU,
-                                          context, file, file_len) == FAILURE)
-    {
-        zend_throw_exception(redismi_exception_ce, "Couldn't execute callback!", 0 TSRMLS_CC);
-        RETURN_FALSE;
-    }
-
-    // Success!
-    RETURN_TRUE;
-    */
 }
 
 /*
