@@ -30,6 +30,7 @@ static zend_function_entry redismi_methods[] = {
     PHP_ME(RedisMI, GetInfo, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SetInfo, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, GetBuffer, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(RedisMI, SetBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, LoadBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SaveBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SaveCallback, NULL, ZEND_ACC_PUBLIC)
@@ -461,7 +462,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 
     if((written = php_stream_write(stream, context->buf->buf, context->buf->pos)) < context->buf->pos) {
         php_error_docref(NULL TSRMLS_CC, E_WARNING,
-                         "Could only write %d of %d bytes, possibly out of disk space",
+                         "Could only write %d of %d bytes, possibly out of disk space.",
                          written, (int)context->buf->pos);
         written = -1;
     }
@@ -481,4 +482,25 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 PHP_METHOD(RedisMI, GetBuffer) {
     redismi_context *context = GET_CONTEXT();
     RETURN_STRINGL(context->buf->buf, context->buf->pos, 1);
+}
+
+/*
+ * Set the buffer manually
+ *
+ */
+PHP_METHOD(RedisMI, SetBuffer) {
+    char *data;
+    int data_len;
+    redismi_context *context = GET_CONTEXT();
+
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &data, &data_len) == FAILURE) {
+        RETURN_FALSE;
+    }
+
+    context->buf->pos = 0;
+    if(cb_appendl(context->buf, data, data_len) < 0) {
+        RETURN_FALSE;
+    }
+
+    RETURN_TRUE;
 }
