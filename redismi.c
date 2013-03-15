@@ -30,6 +30,7 @@ static zend_function_entry redismi_methods[] = {
     PHP_ME(RedisMI, GetInfo, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SetInfo, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, GetBuffer, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(RedisMI, LoadBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SaveBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SaveCallback, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, truncate, NULL, ZEND_ACC_PUBLIC)
@@ -359,6 +360,9 @@ PHP_METHOD(RedisMI, SaveCallback) {
     // Grab our object context
     redismi_context *context = GET_CONTEXT();
 
+    // Free any old callback we have
+    if(context->fci) efree(context->fci);
+
     // Set our callback info in our context struct
     context->fci = cfi;
 }
@@ -399,10 +403,78 @@ PHP_METHOD(RedisMI, truncate) {
 }
 
 /*
+ * Load a buffer file from disk
+ */
+PHP_METHOD(RedisMI, LoadBuffer) {
+    char *filename, *data;
+    int filename_len, len;
+    php_stream *stream;
+
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "p", &filename,
+                             &filename_len) == FAILURE) {
+        RETURN_FALSE;
+    }
+
+    // Open our file
+    stream = php_stream_open_wrapper_ex(filename, "rb", 0 | REPORT_ERRORS, NULL, NULL);
+
+    if(!stream) {
+        RETURN_FALSE;
+    }
+
+    if((len = php_stream_copy_to_mem(stream, &data, -1, PHP_STREAM_COPY_ALL)) < 0) {
+        RETURN_FALSE
+    }
+
+    redismi_context *context = GET_CONTEXT();
+
+    context->buf->pos = 0;
+
+    if(cb_appendl(context->buf, data, len) < 0) {
+        RETVAL_FALSE;
+    } else {
+        RETVAL_LONG(len);
+    }
+
+    php_stream_close(stream);
+}
+
+/*
  * Save the command buffer to a file
  */
 PHP_METHOD(RedisMI, SaveBuffer) {
-    char *file;
+    char *filename;
+    int filename_len, truncate = 1, written;
+    php_stream *stream;
+    redismi_context *context = GET_CONTEXT();
+
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "p|b", &filename,
+                             &filename_len, &truncate) == FAILURE) {
+        RETURN_FALSE;
+    }
+
+    stream = php_stream_open_wrapper_ex(filename, "wb", 0 | REPORT_ERRORS, NULL, NULL);
+
+    if(stream == NULL) {
+        RETURN_FALSE;
+    }
+
+    if((written = php_stream_write(stream, context->buf->buf, context->buf->pos)) < context->buf->pos) {
+        php_error_docref(NULL TSRMLS_CC, E_WARNING,
+                         "Could only write %d of %d bytes, possibly out of disk space",
+                         written, (int)context->buf->pos);
+        written = -1;
+    }
+
+    php_stream_close(stream);
+
+    if(written < 0) {
+        RETURN_FALSE;
+    }
+
+    RETURN_LONG(written);
+
+    /*char *file;
     int file_len, flush = 1;
     FILE *fp;
 
@@ -421,7 +493,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
     redismi_context *context = GET_CONTEXT();
 
     // Write our file
-    if(fwrite(context->buf->buf, 1, context->buf->pos, fp) < CMD_BUFLEN(context)) {
+    if(fwrite(context->buf->buf, 1, context->buf->pos, fp) < context->buf->pos) {
         zend_throw_exception(redismi_exception_ce, "Couldn't write buffer", 0 TSRMLS_CC);
         fclose(fp);
         RETURN_FALSE;
@@ -434,15 +506,16 @@ PHP_METHOD(RedisMI, SaveBuffer) {
     fclose(fp);
 
     // If we've got a callback, call it
-    if(context->fci) {
-        if(exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, file, file_len) == FAILURE) {
-            zend_throw_exception(redismi_exception_ce, "Couldn't execute callback!", 0 TSRMLS_CC);
-            RETURN_FALSE;
-        }
+    if(context->fci && exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU,
+                                          context, file, file_len) == FAILURE)
+    {
+        zend_throw_exception(redismi_exception_ce, "Couldn't execute callback!", 0 TSRMLS_CC);
+        RETURN_FALSE;
     }
 
     // Success!
     RETURN_TRUE;
+    */
 }
 
 /*

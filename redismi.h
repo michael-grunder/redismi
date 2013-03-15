@@ -97,6 +97,7 @@ PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *con
 PHP_METHOD(RedisMI, __construct);
 PHP_METHOD(RedisMI, __destruct);
 PHP_METHOD(RedisMI, GetBuffer);
+PHP_METHOD(RedisMI, LoadBuffer);
 PHP_METHOD(RedisMI, SaveBuffer);
 PHP_METHOD(RedisMI, GetInfo);
 PHP_METHOD(RedisMI, SetInfo);
