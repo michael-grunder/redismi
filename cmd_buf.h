@@ -68,6 +68,8 @@ int cb_append(cmdbuf *buf, const char *str);
 int cb_putc(cmdbuf *buf, char c);
 
 // Put numbers and such
+int cb_put_int(cmdbuf *buf, int num);
+int cb_put_uint(cmdbuf *buf, unsigned int num);
 int cb_put_lng(cmdbuf *buf, long num);
 
 //

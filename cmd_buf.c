@@ -163,7 +163,7 @@ int cb_put_lng(cmdbuf *buf, long num) {
 }
 
 /*
- * Put a command header (e.g. *3\r\n)
+ * Put a command header (e.g. *3\r\n$3\r\nGET\r\n$3\r\nFOO)
  */
 int cb_put_redis_hdr(cmdbuf *buf, const char *cmd, unsigned int cmd_len, unsigned int num_args) {
     // Multibulk header

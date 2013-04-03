@@ -55,6 +55,10 @@ typedef struct _redismi_context {
     // Number of commands in our buffer
     int cmd_count;
 
+    // The last error/command count for any sent buffers
+    int send_err_count;
+    int send_cmd_count;
+
     // Save callback handlers
     callback_handler *fci;
 
@@ -100,9 +104,12 @@ PHP_METHOD(RedisMI, GetBuffer);
 PHP_METHOD(RedisMI, SetBuffer);
 PHP_METHOD(RedisMI, LoadBuffer);
 PHP_METHOD(RedisMI, SaveBuffer);
+PHP_METHOD(RedisMI, SendBuffer);
 PHP_METHOD(RedisMI, GetInfo);
 PHP_METHOD(RedisMI, SetInfo);
 PHP_METHOD(RedisMI, SaveCallback);
+PHP_METHOD(RedisMI, LastErrorCount);
+PHP_METHOD(RedisMI, LastReplyCount);
 PHP_METHOD(RedisMI, truncate);
 
 /*

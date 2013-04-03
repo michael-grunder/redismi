@@ -33,7 +33,10 @@ static zend_function_entry redismi_methods[] = {
     PHP_ME(RedisMI, SetBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, LoadBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SaveBuffer, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(RedisMI, SendBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SaveCallback, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(RedisMI, LastReplyCount, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(RedisMI, LastErrorCount, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, truncate, NULL, ZEND_ACC_PUBLIC)
 
     /* Pass-thru methods */
@@ -167,7 +170,7 @@ void init_redismi(TSRMLS_D) {
 }
 
 /*
- * Construct a redis command, generically
+ * Append a command to our buffer using variable argument counts
  */
 PHPAPI void redis_cmd(INTERNAL_FUNCTION_PARAMETERS, char *cmd, size_t cmd_len) {
     zval **z_args;
@@ -264,6 +267,57 @@ PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *con
 
    	// Success!
    	return result;
+}
+
+/*
+ * Parse our status line
+ */
+int parse_status_line(redismi_context *ctx, const char *line) {
+    char *p, *p2, buf[40];
+
+    // Grab relevant error pointers
+    if(!(p=strchr(line, ' ')) || !(p2=strchr(p,','))) {
+        return FAILURE;
+    }
+
+    // Copy in error count
+    strncpy(buf,p+1,p2-p-1);
+    buf[p2-p-1]='\0';
+    ctx->send_err_count = atoi(buf);
+
+    // Grab reply pointers
+    if(!(p=strchr(p2,':'))) {
+        return FAILURE;
+    }
+
+    // Copy in reply count
+    strcpy(buf,++p);
+    ctx->send_cmd_count = atoi(buf);
+
+    // Success
+    return SUCCESS;
+}
+
+/*
+ * Truncate and optionally free buffer memory
+ */
+int truncate_buffer(redismi_context *ctx, int free) {
+    // Reset position and command count
+    ctx->buf->pos  = 0;
+    ctx->cmd_count = 0;
+
+    // Free and realloc if we're directed to
+    if(free) {
+        cb_free(ctx->buf);
+
+        // Attempt to create a new one
+        if(!(ctx->buf = cb_init(INITIAL_BUFFER_SIZE))) {
+            return FAILURE;
+        }
+    }
+
+    // Sucess
+    return SUCCESS;
 }
 
 /*
@@ -383,21 +437,11 @@ PHP_METHOD(RedisMI, truncate) {
     redismi_context *context = GET_CONTEXT();
 
     // If we've been instructed to free memory associated with our command buffer, do that
-    if(b_free) {
-        // Free our buffer
-        cb_free(context->buf);
-
-        // Attempt to create a new buffer
-        if(!(context->buf = cb_init(INITIAL_BUFFER_SIZE))) {
-            // Something is wrong
-            zend_throw_exception(redismi_exception_ce, "Couldn't reallocate command buffer!", 0 TSRMLS_C);
-            RETURN_FALSE;
-        }
+    if(truncate_buffer(context, b_free) < 0) {
+        // Something is wrong
+        zend_throw_exception(redismi_exception_ce, "Couldn't reallocate command buffer!", 0 TSRMLS_C);
+        RETURN_FALSE;
     }
-
-    // Reset buffer position, and command count
-    context->buf->pos  = 0;
-    context->cmd_count = 0;
 
     // Success!
     RETURN_TRUE;
@@ -429,7 +473,8 @@ PHP_METHOD(RedisMI, LoadBuffer) {
 
     redismi_context *context = GET_CONTEXT();
 
-    context->buf->pos = 0;
+    // Truncate our buffer
+    truncate_buffer(context, 0);
 
     if(cb_appendl(context->buf, data, len) < 0) {
         RETVAL_FALSE;
@@ -469,11 +514,72 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 
     php_stream_close(stream);
 
+    // Truncate our buffer
+    if(truncate) truncate_buffer(context, 0);
+
     if(written < 0) {
         RETURN_FALSE;
     }
 
     RETURN_LONG(written);
+}
+
+/*
+ * Send a buffer
+ */
+PHP_METHOD(RedisMI, SendBuffer) {
+    char *host, *file, cmd[1024], rbuf[1024];
+    long host_len, port=0, file_len;
+    redismi_context *context = GET_CONTEXT();
+    FILE *fp;
+
+    // Parse args
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssl", &file, &file_len,
+                             &host, &host_len, &port) == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+    // Construct our redis-cli --pipe command
+    snprintf(cmd, sizeof(cmd), "cat %s|redis-cli -h %s -p %d --pipe", file, host, port);
+
+    // Attempt to open the process to read from it
+    if((fp = popen(cmd, "r")) == NULL) {
+        zend_throw_exception(redismi_exception_ce, "Can't invoke redis-cli to send data!", 0 TSRMLS_CC);
+        RETURN_FALSE;
+    }
+
+    // Read each response from redis-cli, we just need the last one
+    while(fgets(rbuf, sizeof(rbuf), fp) != NULL);
+
+    // Parse our errors: N, replies: N into our context
+    parse_status_line(context, rbuf);
+
+    // Close the process
+    int rval = pclose(fp);
+
+    // Return true if we have no errors, or an execution error
+    if(rval == 0) {
+        RETURN_TRUE;
+    } else {
+        RETURN_FALSE;
+    }
+}
+
+/*
+ * Last reply count
+ */
+PHP_METHOD(RedisMI, LastReplyCount) {
+    redismi_context *ctx = GET_CONTEXT();
+    RETURN_LONG(ctx->send_cmd_count);
+}
+
+/*
+ * Last error count
+ */
+PHP_METHOD(RedisMI, LastErrorCount) {
+    redismi_context *ctx = GET_CONTEXT();
+    RETURN_LONG(ctx->send_err_count);
 }
 
 /*
@@ -486,7 +592,6 @@ PHP_METHOD(RedisMI, GetBuffer) {
 
 /*
  * Set the buffer manually
- *
  */
 PHP_METHOD(RedisMI, SetBuffer) {
     char *data;
