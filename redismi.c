@@ -521,6 +521,11 @@ PHP_METHOD(RedisMI, SaveBuffer) {
         RETURN_FALSE;
     }
 
+    // Execute our save callback
+    if(context->fci) {
+	exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, filename, filename_len);
+    }
+
     RETURN_LONG(written);
 }
 
