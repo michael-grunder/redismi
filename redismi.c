@@ -230,7 +230,7 @@ PHPAPI void set_object_info(INTERNAL_FUNCTION_PARAMETERS, redismi_context *conte
  * Call our attached callback
  */
 PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *context,
-                              char *file, int file_len)
+                              char *file, int file_len, int cmd_count)
 {
     zend_fcall_info        *fci = &context->fci->fci;
     zend_fcall_info_cache  *fcc = &context->fci->fcc;
@@ -246,7 +246,7 @@ PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *con
 
     // Number of commands
     MAKE_STD_ZVAL(z_cmds);
-    ZVAL_LONG(z_cmds, context->cmd_count);
+    ZVAL_LONG(z_cmds, cmd_count);
     params[2] = &z_cmds;
 
     // Set up call structure
@@ -493,6 +493,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
     int filename_len, truncate = 1, written;
     php_stream *stream;
     redismi_context *context = GET_CONTEXT();
+    int cmd_count = context->cmd_count;
 
     if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "p|b", &filename,
                              &filename_len, &truncate) == FAILURE) {
@@ -512,6 +513,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
         written = -1;
     }
 
+    // Close our stream
     php_stream_close(stream);
 
     // Truncate our buffer
@@ -523,7 +525,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 
     // Execute our save callback
     if(context->fci) {
-	exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, filename, filename_len);
+        exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, filename, filename_len, cmd_count);
     }
 
     RETURN_LONG(written);

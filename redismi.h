@@ -93,7 +93,7 @@ PHPAPI void set_object_info(INTERNAL_FUNCTION_PARAMETERS, redismi_context *ctx, 
 /*
  * Execute our save callback
  */
-PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *context, char *file, int file_len);
+PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *context, char *file, int file_len, int cmd_count);
 
 /*
  * Methods
