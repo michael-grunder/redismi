@@ -34,6 +34,8 @@ static zend_function_entry redismi_methods[] = {
     PHP_ME(RedisMI, LoadBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SaveBuffer, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SendBuffer, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(RedisMI, BufferLen, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(RedisMI, CmdCount, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SaveCallback, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, LastReplyCount, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, LastErrorCount, NULL, ZEND_ACC_PUBLIC)
@@ -567,6 +569,22 @@ PHP_METHOD(RedisMI, SendBuffer) {
     } else {
         RETURN_FALSE;
     }
+}
+
+/**
+ * The length of our buffer in bytes
+ */
+PHP_METHOD(RedisMI, BufferLen) {
+    redismi_context *ctx = GET_CONTEXT();
+    RETURN_LONG(ctx->buf->size);
+}
+
+/**
+ * The number of commands in our buffer
+ */
+PHP_METHOD(RedisMI, CmdCount) {
+    redismi_context *ctx = GET_CONTEXT();
+    RETURN_LONG(ctx->cmd_count);
 }
 
 /*

@@ -105,6 +105,8 @@ PHP_METHOD(RedisMI, SetBuffer);
 PHP_METHOD(RedisMI, LoadBuffer);
 PHP_METHOD(RedisMI, SaveBuffer);
 PHP_METHOD(RedisMI, SendBuffer);
+PHP_METHOD(RedisMI, BufferLen);
+PHP_METHOD(RedisMI, CmdCount);
 PHP_METHOD(RedisMI, GetInfo);
 PHP_METHOD(RedisMI, SetInfo);
 PHP_METHOD(RedisMI, SaveCallback);
