@@ -147,10 +147,6 @@ void free_redismi_context(void *object TSRMLS_DC) {
 void init_redismi(TSRMLS_D) {
     zend_class_entry ce, ce_ex;
     
-    /*
-     * RedisMI
-     */
-
     // Initialize our class entry
     INIT_CLASS_ENTRY(ce, "RedisMI", redismi_methods);
 
@@ -218,7 +214,7 @@ PHPAPI void set_object_info(INTERNAL_FUNCTION_PARAMETERS, redismi_context *conte
         context->z_info = NULL;
     }
 
-    // If the info is non null, copy it and set.  Otherwise null it out
+    // If the info is non null, copy it and set.
     if(z_info) {
         MAKE_STD_ZVAL(context->z_info);
         *context->z_info = *z_info;
@@ -495,7 +491,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
     redismi_context *context = GET_CONTEXT();
     int cmd_count = context->cmd_count;
 
-    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "p|b", &filename,
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|b", &filename,
                              &filename_len, &truncate) == FAILURE) {
         RETURN_FALSE;
     }

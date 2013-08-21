@@ -129,6 +129,9 @@ int cb_putc(cmdbuf *buf, char c) {
 
     // Move forward
     buf->pos++;
+
+    // Success
+    return 0;
 }
 
 /* 
@@ -197,4 +200,6 @@ int cb_put_redis_cmdl(cmdbuf *buf, const char *cmd, unsigned int cmd_len) {
 
     // CRLF
     cb_appendl(buf, "\r\n", 2);
+
+    return 0;
 }
