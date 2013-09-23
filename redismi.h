@@ -59,9 +59,11 @@ typedef struct _redismi_context {
     int send_err_count;
     int send_cmd_count;
 
+    // Should we compress/deflate the buffer files
+    int compression;
+
     // Save callback handlers
     callback_handler *fci;
-
 } redismi_context;
 
 /* 
@@ -93,13 +95,16 @@ PHPAPI void set_object_info(INTERNAL_FUNCTION_PARAMETERS, redismi_context *ctx, 
 /*
  * Execute our save callback
  */
-PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *context, char *file, int file_len, int cmd_count);
+PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS,
+                              redismi_context *context, char *file,
+                              int file_len, int cmd_count);
 
 /*
  * Methods
  */
 PHP_METHOD(RedisMI, __construct);
 PHP_METHOD(RedisMI, __destruct);
+PHP_METHOD(RedisMI, SetCompression);
 PHP_METHOD(RedisMI, GetBuffer);
 PHP_METHOD(RedisMI, SetBuffer);
 PHP_METHOD(RedisMI, LoadBuffer);

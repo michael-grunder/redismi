@@ -10,6 +10,11 @@
 #include "redismi.h"
 #include <zend_exceptions.h>
 
+// ZLIB definition
+#ifndef MAX_WBITS
+#define MAX_WBITS 15
+#endif
+
 /*
  * Class entry pointer itself
  */
@@ -27,6 +32,7 @@ zend_class_entry *spl_rte_ce = NULL;
 static zend_function_entry redismi_methods[] = {
     PHP_ME(RedisMI, __construct, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, __destruct, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(RedisMI, SetCompression, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, GetInfo, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, SetInfo, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(RedisMI, GetBuffer, NULL, ZEND_ACC_PUBLIC)
@@ -136,6 +142,21 @@ void free_redismi_context(void *object TSRMLS_DC) {
 
     // If we've got an attached callback, free our handler struct
     if(context->fci) {
+        /*
+         * TODO:  There is a memory leak involved here somehow
+         * efreeing the fci.function_name/fci.object_ptr fixes
+         * the warning, but that seems the incorrect solution.
+         * It must be something to do with ADDREF_P/DELREF_P
+        if(context->fci->fci.function_name) {
+            efree(context->fci->fci.function_name);
+            Z_DELREF_P(context->fci->fci.function_name);
+        }
+        if(context->fci->fci.object_ptr) {
+            efree(context->fci->fci.object_ptr);
+            Z_DELREF_P(context->fci->fci.object_ptr);
+        }
+        */
+
         efree(context->fci);
     }
 
@@ -232,14 +253,14 @@ PHPAPI int exec_save_callback(INTERNAL_FUNCTION_PARAMETERS, redismi_context *con
 {
     zend_fcall_info        *fci = &context->fci->fci;
     zend_fcall_info_cache  *fcc = &context->fci->fcc;
-    zval                  **params[3], *z_ret=NULL, *z_file, *z_cmds;
+    zval                   **params[3], *z_ret=NULL, *z_file, *z_cmds;
 
     // RedisMI
     params[0] = &getThis();
 
     // Save file
     MAKE_STD_ZVAL(z_file);
-    ZVAL_STRINGL(z_file, file, file_len, 1);
+    ZVAL_STRINGL(z_file, file, file_len, 0);
     params[1] = &z_file;
 
     // Number of commands
@@ -358,6 +379,34 @@ PHP_METHOD(RedisMI, __destruct) {
 }
 
 /*
+ * Set or unset compression
+ */
+PHP_METHOD(RedisMI, SetCompression) {
+    redismi_context *context = GET_CONTEXT();
+    zend_bool flag;
+
+    // Grab our parameters
+    if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "b", &flag)
+                             == FAILURE)
+    {
+        RETURN_FALSE;
+    }
+
+    // If the user is trying to enable buffer compression, we'll need zlib
+    if(flag && !zend_hash_exists(&module_registry, "zlib", sizeof("zlib"))) {
+        php_error_docref(NULL TSRMLS_CC, E_ERROR,
+                         "Can't enable compression without the zlib library!");
+        RETURN_FALSE;
+    }
+
+    // Update our context
+    context->compression = flag != 0;
+
+    // Success!
+    RETURN_TRUE;
+}
+
+/*
  * Get user assigned object info
  */
 PHP_METHOD(RedisMI, GetInfo) {
@@ -418,6 +467,9 @@ PHP_METHOD(RedisMI, SaveCallback) {
 
     // Set our callback info in our context struct
     context->fci = cfi;
+
+    // Success
+    RETURN_TRUE;
 }
 
 /*
@@ -487,9 +539,10 @@ PHP_METHOD(RedisMI, LoadBuffer) {
  * Save the command buffer to a file
  */
 PHP_METHOD(RedisMI, SaveBuffer) {
-    char *filename;
-    int filename_len, truncate = 1, written;
+    char *filename, save_file[1024];
+    int filename_len, truncate = 1, written, save_file_len;
     php_stream *stream;
+    php_stream_filter *filter = NULL;
     redismi_context *context = GET_CONTEXT();
     int cmd_count = context->cmd_count;
 
@@ -498,10 +551,42 @@ PHP_METHOD(RedisMI, SaveBuffer) {
         RETURN_FALSE;
     }
 
-    stream = php_stream_open_wrapper_ex(filename, "wb", 0 | REPORT_ERRORS, NULL, NULL);
+    // If we're compressing, we want to append a .gz extension to the buffer filename
+    if(context->compression) {
+        // Append our gzip extension
+        snprintf(save_file, sizeof(save_file), "%s.gz", filename);
+        save_file_len = filename_len + 3;
+    } else {
+        // The filename, as is
+        snprintf(save_file, sizeof(save_file), "%s", filename);
+        save_file_len = filename_len;
+    }
+
+    // Create our php stream for writing to disk
+    stream = php_stream_open_wrapper_ex(save_file, "wb", 0 | REPORT_ERRORS, NULL, NULL);
 
     if(stream == NULL) {
         RETURN_FALSE;
+    }
+
+    // Create a filter for our stream if we're compressing
+    if(context->compression) {
+        zval filterparams;
+        array_init(&filterparams);
+        add_assoc_long(&filterparams, "window", MAX_WBITS+16);
+
+        // Create our write filter, and instruct zlib to add the header so gunzip can inflate it
+        filter = php_stream_filter_create("zlib.deflate", &filterparams, 0 TSRMLS_CC);
+        zval_dtor(&filterparams);
+
+        // Abort if we couldn't create the filter
+        if(!filter) {
+            php_error_docref(NULL TSRMLS_CC, E_ERROR,"Couldn't create filter to compress buffer file!");
+            RETURN_FALSE;
+        }
+
+        // Append our filter to the write stream
+        php_stream_filter_append(&stream->writefilters, filter);
     }
 
     if((written = php_stream_write(stream, context->buf->buf, context->buf->pos)) < context->buf->pos) {
@@ -509,6 +594,12 @@ PHP_METHOD(RedisMI, SaveBuffer) {
                          "Could only write %d of %d bytes, possibly out of disk space.",
                          written, (int)context->buf->pos);
         written = -1;
+    }
+
+    // If we've used a compression filter, free it
+    if(filter) {
+        php_stream_filter_flush(filter, 1 TSRMLS_CC);
+        php_stream_filter_remove(filter, 1 TSRMLS_CC);
     }
 
     // Close our stream
@@ -523,7 +614,8 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 
     // Execute our save callback
     if(context->fci) {
-        exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context, filename, filename_len, cmd_count);
+        exec_save_callback(INTERNAL_FUNCTION_PARAM_PASSTHRU, context,
+                           save_file, save_file_len, cmd_count);
     }
 
     RETURN_LONG(written);
@@ -545,8 +637,14 @@ PHP_METHOD(RedisMI, SendBuffer) {
         RETURN_FALSE;
     }
 
-    // Construct our redis-cli --pipe command
-    snprintf(cmd, sizeof(cmd), "cat %s|redis-cli -h %s -p %d --pipe", file, host, port);
+    // Construct our command.  If the file has a .gz suffix, we'll use gunzip to
+    // decompress it to STDOUT, otherwise just cat the file into redis-cli
+    if(context->compression && strstr(file, ".gz") != NULL) {
+        snprintf(cmd, sizeof(cmd), "gunzip -c %s|redis-cli -h %s -p %d --pipe", file, host, port);
+    } else {
+        // Construct our redis-cli --pipe command
+        snprintf(cmd, sizeof(cmd), "cat %s|redis-cli -h %s -p %d --pipe", file, host, port);
+    }
 
     // Attempt to open the process to read from it
     if((fp = popen(cmd, "r")) == NULL) {
