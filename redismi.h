@@ -6,6 +6,12 @@
 #define REDISMI_H
 
 /*
+ * Given a filename and length, check if it ends with the gzip extension
+ */
+#define IS_GZIPPED_FILE(file,len) \
+    (file[len-3]=='.' && file[len-2]=='g' && file[len-1]=='z')
+
+/*
  * This macro allows us to implement every redis command by passing it into our
  * variable argument command processor redis_cmd.  We do this because using
  * the magic method __call is nearly 3x as slow.

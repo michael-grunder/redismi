@@ -502,26 +502,56 @@ PHP_METHOD(RedisMI, truncate) {
  */
 PHP_METHOD(RedisMI, LoadBuffer) {
     char *filename, *data;
-    int filename_len, len;
+    int filename_len=0, len;
     php_stream *stream;
+    php_stream_filter *filter = NULL;
+    redismi_context *context = GET_CONTEXT();
 
     if(zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "p", &filename,
                              &filename_len) == FAILURE) {
         RETURN_FALSE;
     }
 
-    // Open our file
-    stream = php_stream_open_wrapper_ex(filename, "rb", 0 | REPORT_ERRORS, NULL, NULL);
-
-    if(!stream) {
+    // We can't open an empty file
+    if(!filename_len) {
         RETURN_FALSE;
     }
 
-    if((len = php_stream_copy_to_mem(stream, &data, -1, PHP_STREAM_COPY_ALL)) < 0) {
-        RETURN_FALSE
+    // Open our buffer file
+    if(!(stream = php_stream_open_wrapper_ex(filename, "rb",
+                                             0 | REPORT_ERRORS, NULL, NULL)))
+    {
+        php_error_docref(NULL TSRMLS_CC, E_ERROR, "Couldn't open buffer file '%s'", filename);
+        RETURN_FALSE;
     }
 
-    redismi_context *context = GET_CONTEXT();
+    // If this is a gzipped file, we'll want to decompress
+    if(IS_GZIPPED_FILE(filename, filename_len)) {
+        // This zlib commpressed file should have the gzip header
+        zval filterparams;
+        array_init(&filterparams);
+        add_assoc_long(&filterparams,"window",MAX_WBITS+32);
+
+        // Attempt to create our filter
+        filter = php_stream_filter_create("zlib.inflate", &filterparams, 0 TSRMLS_CC);
+
+        // Free parameters
+        zval_dtor(&filterparams);
+
+        // If we couldn't create the filter, it could be because ZLIB is not installed
+        if(!filter) {
+            php_error_docref(NULL TSRMLS_CC, E_ERROR, "Couldn't create filter to decompress buffer file");
+            RETURN_FALSE;
+        }
+
+        // Add this filter to our stream
+        php_stream_filter_append_ex(&stream->readfilters, filter);
+    }
+
+    if((len = php_stream_copy_to_mem(stream, &data, -1, PHP_STREAM_COPY_ALL)) < 0) {
+        php_error_docref(NULL TSRMLS_CC, E_ERROR, "Couldn't read from stream '%s'", filename);
+        RETURN_FALSE
+    }
 
     // Truncate our buffer
     truncate_buffer(context, 0);
@@ -532,6 +562,13 @@ PHP_METHOD(RedisMI, LoadBuffer) {
         RETVAL_LONG(len);
     }
 
+    // If we applied a filter, flush and remove it
+    if(filter) {
+        php_stream_filter_flush(filter, 1 TSRMLS_CC);
+        php_stream_filter_remove(filter, 1 TSRMLS_CC);
+    }
+
+    // Close our stream
     php_stream_close(stream);
 }
 
@@ -554,12 +591,10 @@ PHP_METHOD(RedisMI, SaveBuffer) {
     // If we're compressing, we want to append a .gz extension to the buffer filename
     if(context->compression) {
         // Append our gzip extension
-        snprintf(save_file, sizeof(save_file), "%s.gz", filename);
-        save_file_len = filename_len + 3;
+        save_file_len = snprintf(save_file, sizeof(save_file), "%s.gz", filename);
     } else {
         // The filename, as is
-        snprintf(save_file, sizeof(save_file), "%s", filename);
-        save_file_len = filename_len;
+        save_file_len = snprintf(save_file, sizeof(save_file), "%s", filename);
     }
 
     // Create our php stream for writing to disk
@@ -571,6 +606,8 @@ PHP_METHOD(RedisMI, SaveBuffer) {
 
     // Create a filter for our stream if we're compressing
     if(context->compression) {
+        // This bit tells zlib to add the gzip header, so gunzip
+        // will be able to decompress it
         zval filterparams;
         array_init(&filterparams);
         add_assoc_long(&filterparams, "window", MAX_WBITS+16);
@@ -618,7 +655,9 @@ PHP_METHOD(RedisMI, SaveBuffer) {
                            save_file, save_file_len, cmd_count);
     }
 
-    RETURN_LONG(written);
+    // Return the actual filename written which might have appended a .gz
+    // extension if compression is enabled
+    RETURN_STRINGL(save_file, save_file_len, 1);
 }
 
 /*
@@ -626,7 +665,7 @@ PHP_METHOD(RedisMI, SaveBuffer) {
  */
 PHP_METHOD(RedisMI, SendBuffer) {
     char *host, *file, cmd[1024], rbuf[1024];
-    long host_len, port=0, file_len;
+    long host_len=0, port=0, file_len=0;
     redismi_context *context = GET_CONTEXT();
     FILE *fp;
 
@@ -637,9 +676,14 @@ PHP_METHOD(RedisMI, SendBuffer) {
         RETURN_FALSE;
     }
 
+    // We can't do anything if there isn't a file, host, or the port is out of range
+    if(!file_len || !host_len || port < 0 || port > 65536) {
+        RETURN_FALSE;
+    }
+
     // Construct our command.  If the file has a .gz suffix, we'll use gunzip to
     // decompress it to STDOUT, otherwise just cat the file into redis-cli
-    if(context->compression && strstr(file, ".gz") != NULL) {
+    if(context->compression || IS_GZIPPED_FILE(file,file_len)) {
         snprintf(cmd, sizeof(cmd), "gunzip -c %s|redis-cli -h %s -p %d --pipe", file, host, port);
     } else {
         // Construct our redis-cli --pipe command
