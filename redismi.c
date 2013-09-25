@@ -588,6 +588,11 @@ PHP_METHOD(RedisMI, SaveBuffer) {
         RETURN_FALSE;
     }
 
+    // There is no need to save an empty command buffer
+    if(!cmd_count) {
+        RETURN_FALSE;
+    }
+
     // If we're compressing, we want to append a .gz extension to the buffer filename
     if(context->compression) {
         // Append our gzip extension
